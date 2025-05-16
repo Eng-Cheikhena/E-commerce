@@ -1,0 +1,117 @@
+<?php
+// Required Odoo configurations
+$odoo_url = "http://odoo.a2ict.mr:8069/";
+$odoo_db = "oddo_db";
+$odoo_username = "commercial@a2ict.com";
+$odoo_password = "admin";
+
+// Get product ID from the clicked link
+$product_id = isset($_GET['id']) && is_numeric($_GET['id']) ? (int)$_GET['id'] : 0;
+
+// Initialize default values
+$product_name = "Unknown Product";
+$product_price = "N/A";
+$product_stock = "N/A";
+$product_category = "N/A";
+$product_image = "placeholder.png"; // Use a placeholder image if none is available
+$product_default_code = "N/A";
+
+// If product ID is provided
+if ($product_id > 0) {
+    // Authenticate to Odoo
+    $common = xmlrpc_encode_request("call", ["common", "authenticate", $odoo_db, $odoo_username, $odoo_password, []]);
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, "$odoo_url/xmlrpc/2/common");
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $common);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: text/xml']);
+    $uid = xmlrpc_decode(curl_exec($ch));
+    curl_close($ch);
+
+    if ($uid) {
+        // Fetch product details
+        $models = xmlrpc_encode_request("call", ["object", "execute_kw", $odoo_db, $uid, $odoo_password, "product.product", "read", [$product_id], ["fields" => ["name", "list_price", "qty_available", "image_1920", "categ_id", "default_code"]]]);
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, "$odoo_url/xmlrpc/2/object");
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $models);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: text/xml']);
+        $product_data = xmlrpc_decode(curl_exec($ch));
+        curl_close($ch);
+
+        if ($product_data) {
+            $product_name = $product_data[0]["name"] ?? "Unknown Product";
+            $product_price = $product_data[0]["list_price"] ?? "N/A";
+            $product_stock = $product_data[0]["qty_available"] ?? "N/A";
+            $product_category = $product_data[0]["categ_id"][1] ?? "N/A";
+            $product_image = !empty($product_data[0]["image_1920"])
+                ? "data:image/png;base64," . $product_data[0]["image_1920"]
+                : "placeholder.png"; // Default to placeholder if no image
+            $product_default_code = $product_data[0]["default_code"] ?? "N/A";
+        }
+
+        // Save the product details to the session
+        session_start();
+        $_SESSION['product'] = [
+            'id' => $product_id,
+            'name' => $product_name,
+            'default_code' => $product_default_code,
+            'category_name' => $product_category
+        ];
+    }
+}
+?>
+
+<!-- Display Product Information -->
+<div class="row">
+  <div class="col-md-6 product-single-gallery">
+    <div class="product-image-container">
+      <img
+        class="product-single-image"
+        src="<?php echo htmlspecialchars($product_image); ?>"
+        alt="Product Image"
+        width="468"
+        height="468" 
+        style="border:1px solid #ddd; padding:10px; object-fit:cover;" />
+    </div>
+  </div>
+  <div class="col-md-6 product-single-details">
+    <h1 class="product-title"><?php echo htmlspecialchars($product_name); ?></h1>
+    <ul class="single-info-list">
+      <li><strong>Category:</strong> <?php echo htmlspecialchars($product_category); ?></li>
+      <li><strong>Price:</strong> MRU <?php echo number_format((float)$product_price, 2); ?></li>
+      <li><strong>Available Stock:</strong> <?php echo htmlspecialchars($product_stock); ?></li>
+    </ul>
+    <div class="product-action">
+      <div class="product-single-qty">
+        <input class="horizontal-quantity form-control" type="number" min="1" value="1">
+      </div>
+
+      <a href="#" class="btn btn-dark add-cart icon-shopping-cart mr-2" title="Add to Cart" style="pointer-events: none;">Add to Cart</a>
+      <a href="#" class="btn btn-gray view-cart d-none">View cart</a>
+    </div>
+    <hr class="divider mb-0 mt-0">
+    <div class="product-single-share mb-2">
+      <label class="sr-only">Share:</label>
+      <div class="social-icons mr-2">
+        <a href="#" class="social-icon social-facebook icon-facebook" target="_blank" title="Facebook"></a>
+        <a href="#" class="social-icon social-twitter icon-twitter" target="_blank" title="Twitter"></a>
+        <a href="#" class="social-icon social-linkedin fab fa-linkedin-in" target="_blank" title="Linkedin"></a>
+        <a href="#" class="social-icon social-gplus fab fa-google-plus-g" target="_blank" title="Google +"></a>
+        <a href="#" class="social-icon social-mail icon-mail-alt" target="_blank" title="Mail"></a>
+      </div>
+      <a href="wishlist.html" class="btn-icon-wish add-wishlist" title="Add to Wishlist"><i class="icon-wishlist-2"></i><span>Add to Wishlist</span></a>
+    </div>
+  </div>
+</div>  
+
+<?php
+// Optionally, display the saved product details in session (for debugging or confirmation)
+if (isset($_SESSION['product'])) {
+    echo '<h2>Product Details from Session:</h2>';
+    echo '<p><strong>ID:</strong> ' . htmlspecialchars($_SESSION['product']['id']) . '</p>';
+    echo '<p><strong>Name:</strong> ' . htmlspecialchars($_SESSION['product']['name']) . '</p>';
+    echo '<p><strong>Code:</strong> ' . htmlspecialchars($_SESSION['product']['default_code']) . '</p>';
+    echo '<p><strong>Category:</strong> ' . htmlspecialchars($_SESSION['product']['category_name']) . '</p>';
+}
+?>
